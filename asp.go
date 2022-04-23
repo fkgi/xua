@@ -11,7 +11,8 @@ import (
 
 var (
 	active    = false
-	waitStack map[byte]chan Message
+	resStack chan Message = nil
+	msgStack = make(map[uint16]chan Message)
 )
 
 const (
@@ -40,8 +41,7 @@ const (
    |                         Message Data                          |
 */
 type Message struct {
-	msgClass byte
-	msgType  byte // individual id for each class
+	id uint16 // Message Class + Type
 	body     []byte
 }
 
@@ -52,9 +52,8 @@ func (m Message) WriteTo(w io.Writer) (e error) {
 	buf.WriteByte(1)
 	// reserved
 	buf.WriteByte(0)
-	buf.WriteByte(m.msgClass)
-	buf.WriteByte(m.msgType)
-
+	// Message Class | Message Type
+	binary.Write(buf, binary.BigEndian, m.id)
 	// Message Length
 	binary.Write(buf, binary.BigEndian, uint32(len(m.body)+8))
 
@@ -107,14 +106,20 @@ func DialASP(c net.Conn) (e error) {
 		}
 	*/
 	e = Message{
-		msgClass: ASPSM,
-		msgType:  0x01, // ASPUP
+		id: 0x0301, // ASPSM + ASPUP
 	}.WriteTo(c)
 	if e != nil {
 		return
 	}
+	resStack = make(chan Message)
 
 	go func() {
+		// event handle
+		for {
+		}
+	}()
+	go func() {
+		// pdu handle
 		for {
 		}
 	}()
@@ -125,7 +130,7 @@ func DialASP(c net.Conn) (e error) {
 	} else if mc, mt, _, e = read(c); e != nil {
 	} else if mc == MGMT && mt == 0x00 {
 		e = errors.New("error response")
-	} else if mc != ASPSM {
+	} else if mc != 0x03 {
 		e = errors.New("invalid message class response")
 	} else if mt != 0x04 {
 		e = errors.New("invalid message type response")
@@ -170,7 +175,7 @@ func (a ASP) Close() (e error) {
 	// INFO String (Optioal)
 
 	// ASP Down (ASPDN)
-	mc := ASPSM
+	mc := 0x03, // ASPSM
 	mt := byte(0x02)
 	if e = write(a.con, mc, mt, nil); e != nil {
 	} else if mc, mt, _, e = read(a.con); e != nil {
