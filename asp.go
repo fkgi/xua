@@ -7,14 +7,36 @@ import (
 	"errors"
 	"io"
 	"net"
+	"time"
 )
 
 var (
-	active    = false
-	resStack chan Message = nil
-	msgStack = make(map[uint16]chan Message)
+	state      = down
+	eventStack = make(chan message, 1024)
+	// msgStack   = make(map[uint16]chan message)
+
+	ta    = time.Second * 2
+	tr    = time.Second * 2
+	tack  = time.Second * 2
+	tair  = time.Minute * 15
+	tbeat = time.Second * 30
+
+	requestStack message = nil
 )
 
+const (
+	down     byte = iota
+	inactive byte = iota
+	active   byte = iota
+)
+
+const (
+	Override  uint32 = 1
+	Loadshare uint32 = 2
+	Broadcast uint32 = 3
+)
+
+/*
 const (
 	MGMT  byte = 0x00 //UA Management (MGMT) Message
 	TF    byte = 0x01 //MTP3 Transfer (TF) Messages
@@ -27,232 +49,226 @@ const (
 	CO    byte = 0x08 //SCCP Connection-Oriented (CO) Messages
 	RKM   byte = 0x09 //Routing Key Management (RKM) Messages
 	IIM   byte = 0x0a //Interface Identifier Management (IIM) Messages
+
+	ERR  byte = 0x00
+	NTFY byte = 0x01
+
+	DUNA byte = 0x01
+	DAVA byte = 0x02
+	DAUD byte = 0x03
+	SCON byte = 0x04
+	DUPU byte = 0x05
+	DRST byte = 0x06
+
+	ASPUP    byte = 0x01
+	ASPDN    byte = 0x02
+	BEAT     byte = 0x03
+	ASPUPack byte = 0x04
+	ASPDNack byte = 0x05
+	BEATack  byte = 0x06
+
+	ASPAC    byte = 0x01
+	ASPIA    byte = 0x02
+	ASPACack byte = 0x03
+	ASPIAack byte = 0x04
+
+	CLDT byte = 0x01
+	CLDR byte = 0x02
 )
+*/
 
 /*
-  Message of xUA
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |    Version    |   Reserved    | Message Class | Message Type  |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                        Message Length                         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                         Message Data                          |
+Message of xUA
+
+	 0                   1                   2                   3
+	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|    Version    |   Reserved    | Message Class | Message Type  |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|                        Message Length                         |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|                         Message Data                          |
 */
-type Message struct {
-	id uint16 // Message Class + Type
-	body     []byte
+type message interface {
+	// handleMessage handles this message
+	handleMessage(net.Conn)
+
+	// handleResult handles result of this message
+	handleResult(message)
+
+	// marshal returns Message Class, Message Type and binary Message Data
+	marshal() (uint8, uint8, []byte)
+
+	// unmarshal decodes specified Tag/length TLV value from reader
+	unmarshal(uint16, uint16, io.ReadSeeker) error
 }
 
-func (m Message) WriteTo(w io.Writer) (e error) {
-	buf := bufio.NewWriter(w)
-
-	// version
-	buf.WriteByte(1)
-	// reserved
-	buf.WriteByte(0)
-	// Message Class | Message Type
-	binary.Write(buf, binary.BigEndian, m.id)
-	// Message Length
-	binary.Write(buf, binary.BigEndian, uint32(len(m.body)+8))
-
-	if len(m.body) != 0 {
-		// Message Data
-		buf.Write(m.body)
-	}
-
-	return buf.Flush()
-}
-
-// DialASP ASPUP
-/*
-   0x01 ASP Up (ASPUP)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0011          |           Length = 8          |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                         ASP Identifier                        |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0004          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                          INFO String                          /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-   0x04 ASP Up Ack (ASPUP ACK)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag =0x0004           |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                          INFO String                          /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
-func DialASP(c net.Conn) (e error) {
-	/*
-		body := new(bytes.Buffer)
-		// ASP Identifier (Optional)
-		if id != nil {
-			binary.Write(buf, binary.BigEndian, uint16(0x0011))
-			binary.Write(buf, binary.BigEndian, uint16(8))
-			binary.Write(body, binary.BigEndian, *id)
-		}
-		// INFO String (Optioal)
-		if len(info) != 0 {
-			writeINFO(buf, info)
-		}
-	*/
-	e = Message{
-		id: 0x0301, // ASPSM + ASPUP
-	}.WriteTo(c)
-	if e != nil {
-		return
-	}
-	resStack = make(chan Message)
-
-	go func() {
-		// event handle
-		for {
-		}
-	}()
-	go func() {
-		// pdu handle
-		for {
-		}
-	}()
-	a.con = c
-	a.act = false
-
-	if e = write(c, mc, mt, body); e != nil {
-	} else if mc, mt, _, e = read(c); e != nil {
-	} else if mc == MGMT && mt == 0x00 {
-		e = errors.New("error response")
-	} else if mc != 0x03 {
-		e = errors.New("invalid message class response")
-	} else if mt != 0x04 {
-		e = errors.New("invalid message type response")
+func writeHandler(c net.Conn, m message) (e error) {
+	if requestStack != nil {
+		e = errors.New("any other request is waiting answer")
 	} else {
-		go func() {
-			for a.state != closed {
-				mc, mt, body, e = read(c)
+		cls, typ, b := m.marshal()
+		buf := bufio.NewWriter(c)
+
+		// version
+		buf.WriteByte(1)
+		// reserved
+		buf.WriteByte(0)
+		// Message Class
+		buf.WriteByte(cls)
+		// Message Type
+		buf.WriteByte(typ)
+		// Message Length
+		binary.Write(buf, binary.BigEndian, uint32(len(b)+8))
+		// Message Data
+		buf.Write(b)
+
+		e = buf.Flush()
+	}
+
+	if e == nil {
+		requestStack = m
+		time.AfterFunc(tack, func() {
+			if requestStack == m {
+				eventStack <- &ERR{
+					code: 0x07, // Protocol Error
+				}
+			}
+		})
+	}
+	return
+}
+
+func readHandler(c, t uint8, d []byte) (m message) {
+	switch c {
+	case 0x00:
+		switch t {
+		case 0x00:
+			m = new(ERR)
+		case 0x01:
+			m = new(NTFY)
+		}
+	case 0x02:
+		switch t {
+		case 0x01:
+			m = new(DUNA)
+		case 0x02:
+			m = new(DAVA)
+		case 0x04:
+			m = new(SCON)
+		case 0x05:
+			m = new(DUPU)
+		case 0x06:
+			m = new(DRST)
+		}
+	case 0x03:
+		switch t {
+		case 0x04:
+			m = new(ASPUPAck)
+		case 0x05:
+			m = new(ASPDNAck)
+		case 0x06:
+			m = new(BEATAck)
+		}
+	case 0x04:
+		switch t {
+		case 0x03:
+			m = new(ASPACAck)
+		case 0x04:
+			m = new(ASPIAAck)
+		}
+	case 0x07:
+		switch t {
+		case 0x01:
+			m = &CLDT{tx: false}
+		case 0x02:
+			m = &CLDR{tx: false}
+		}
+	}
+
+	if m != nil {
+		r := bytes.NewReader(d)
+		for r.Len() > 0 {
+			var t, l uint16
+			if e := binary.Read(r, binary.BigEndian, &t); e != nil {
+				break
+			}
+			if e := binary.Read(r, binary.BigEndian, &l); e != nil {
+				break
+			}
+			l -= 4
+
+			if e := m.unmarshal(t, l, r); e != nil {
+				break
+			}
+		}
+	}
+	return
+}
+
+// DialASP connects and active ASP
+func DialASP(c net.Conn) (e error) {
+	go func() {
+		// event handler
+		for e, ok := <-eventStack; ok; e, ok = <-eventStack {
+			e.handleMessage(c)
+		}
+	}()
+	go func() {
+		// rx message handler
+		buf := make([]byte, 4)
+		for n, e := c.Read(buf); e != nil && n == 4; n, e = c.Read(buf) {
+			if buf[0] != 1 {
+				// invalid version
+				continue
+			}
+
+			var l uint32
+			if e = binary.Read(c, binary.BigEndian, &l); e != nil {
+				break
+			}
+
+			data := make([]byte, l)
+			offset := 0
+			for offset < 1 {
+				n, e = c.Read(data[offset:])
+				offset += n
 				if e != nil {
-					a.state = closed
 					break
 				}
 			}
-		}()
+
+			m := readHandler(buf[2], buf[3], data)
+			if m != nil {
+				eventStack <- m
+			}
+		}
+		close(eventStack)
+	}()
+
+	r := make(chan error, 1)
+	eventStack <- &ASPUP{result: r}
+	e = <-r
+
+	if e == nil {
+		eventStack <- &ASPAC{result: r}
+		e = <-r
 	}
 
 	return
 }
 
-// Close ASPDN
-/*
-   0x02 ASP Down (ASPDN)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag =0x0004           |            Length             |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                         INFO String                           /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// Close disconnect ASP
+func Close() (e error) {
+	r := make(chan error, 1)
+	eventStack <- &ASPDN{result: r}
+	e = <-r
 
-   0x05 ASP Down Ack (ASPDN ACK)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0004          |            Length             |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                         INFO String                           /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
-func (a ASP) Close() (e error) {
-	// INFO String (Optioal)
-
-	// ASP Down (ASPDN)
-	mc := 0x03, // ASPSM
-	mt := byte(0x02)
-	if e = write(a.con, mc, mt, nil); e != nil {
-	} else if mc, mt, _, e = read(a.con); e != nil {
-	} else if mc != ASPSM {
-		e = errors.New("invalid message class response")
-	} else if mt != 0x05 {
-		e = errors.New("invalid message type response")
-	}
 	return
-}
-
-type trafficMode uint32
-
-const (
-	Override  trafficMode = 1
-	Loadshare trafficMode = 2
-	Broadcast trafficMode = 3
-)
-
-var (
-	Mode trafficMode = Loadshare
-)
-
-type Label struct {
-	start uint8
-	end   uint8
-	value uint16
 }
 
 // Activate ASPAC
 /*
-  0x01 ASP Active (ASPAC)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |           Tag = 0x000B        |            Length = 8         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                       Traffic Mode Type                       |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |           Tag = 0x0006        |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                       Routing Context                         /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |          Tag = 0x0110         |            Length = 8         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                           TID Label                           |
-   +-------------------------------+-------------------------------+
-   |          Tag = 0x010F         |            Length = 8         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                           DRN Label                           |
-   +-------------------------------+-------------------------------+
-   |           Tag = 0x0004        |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                          Info String                          /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-  0x03 ASP Active Ack (ASPAC ACK)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |           Tag = 0x000B        |            Length = 8         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                       Traffic Mode Type                       |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |           Tag = 0x0006        |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                       Routing Context                         /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |          Tag = 0x0004         |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                          Info String                          /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
 func (a ASP) Activate(mode trafficMode, rc []uint32, tid, drn *Label) (e error) {
 	body := new(bytes.Buffer)
 	// Traffic Mode Type (Optional)
@@ -322,37 +338,6 @@ func (a ASP) Activate(mode trafficMode, rc []uint32, tid, drn *Label) (e error) 
 }
 
 // Deactivate ASPIA
-/*
-  0x02 ASP Inactive (ASPIA)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |           Tag = 0x0006        |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                       Routing Context                         /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |           Tag = 0x0004        |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                          INFO String                          /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-   0x04 ASP Inactive Ack (ASPIA ACK)
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |          Tag = 0x0006         |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                       Routing Context                         /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |          Tag = 0x0004         |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                          INFO String                          /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
 func (a ASP) Deactivate(rc []uint32) (e error) {
 	body := new(bytes.Buffer)
 	// Routing Context (Optional)
@@ -461,68 +446,9 @@ func read(c net.Conn) (mclass msgClass, mtype byte, body *bytes.Buffer, e error)
 	}
 	return
 }
-
+*/
 // MGMT
-/*
-  0x00 Error (ERR)
-  SG <-> ASP
-0                   1                   2                   3
-0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|          Tag = 0x000C         |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                          Error Code                           |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0006          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                       Routing Context                         /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0012          |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|      Mask     |                 Affected PC 1                 |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                              ...                              /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|      Mask     |                 Affected PC n                 |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x010D          |         Length = 8            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                     Network Appearance                        |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|          Tag = 0x0007         |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                        Diagnostic Info                        /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
 
-/*
-  0x01 Notify (NTFY)
-  SG -> ASP
-0                     1                   2                   3
-0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|          Tag = 0x000D         |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                           Status                              |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|            Tag = 0x0011       |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                        ASP Identifier                         |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-|          Tag = 0x0006         |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                       Routing Context                         /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|          Tag = 0x0004         |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                          Info String                          /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
 // 0x02 TEI Status Request
 // 0x03 TEI Status Confirm
 // 0x04 TEI Status Indication
@@ -601,111 +527,6 @@ func read(c net.Conn) (mclass msgClass, mtype byte, body *bytes.Buffer, e error)
 // 0x0f Data Acknowledge
 
 // CL
-/*
-  0x01 Connectionless Data Transfer (CLDT)
-  ASP <-> SG
-0                   1                   2                   3
-0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|          Tag = 0x0006         |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                     * Routing Context                         /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0115          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                       * Protocol Class                        |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0102          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                      * Source Address                         /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0103          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                   * Destination Address                       /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0116         |             Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                      * Sequence Control                       |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0101          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                         SS7 Hop Count                         |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0113          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                          Importance                           |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0114          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                      Message Priority                         |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0013          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                         Correlation ID                        |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0117          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                          Segmentation                         |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x010B          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                           * Data                              /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-  0x02 Connectionless Data Response (CLDR)
-  SG <-> AS
-    0                   1                   2                   3
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |          Tag = 0x0006         |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                     * Routing Context                         /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0106          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                         * SCCP Cause                          |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0102          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                      * Source Address                         /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0103          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   /                   * Destination Address                       /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0101          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                         SS7 Hop Count                         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0113          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                          Importance                           |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0114          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                      Message Priority                         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0013          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                         Correlation ID                        |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x0117          |            Length             |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |                          Segmentation                         |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |         Tag = 0x010b          |             Length            |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-   /                             Data                              /
-   \                                                               \
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
 
 // CO
 // 0x01 Connection Request (CORE)
