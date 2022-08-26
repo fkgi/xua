@@ -117,8 +117,8 @@ NTFY is Notify message. (Message type = 0x01)
 */
 type NTFY struct {
 	status uint32
-	id     *uint32
-	ctx    []uint32
+	// id     *uint32
+	ctx []uint32
 	// info    string
 }
 
@@ -135,9 +135,9 @@ func (m *NTFY) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 	case 0x000D:
 		// Status
 		m.status, e = readUint32(r, l)
-	case 0x0011:
-		// ASP Identifier (Optional)
-		*(m.id), e = readUint32(r, l)
+	// case 0x0011:
+	//	// ASP Identifier (Optional)
+	//	*(m.id), e = readUint32(r, l)
 	case 0x0006:
 		// Routing Context (Optional)
 		m.ctx, e = readRoutingContext(r, l)

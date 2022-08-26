@@ -21,7 +21,8 @@ var (
 	tair  = time.Minute * 15
 	tbeat = time.Second * 30
 
-	requestStack message = nil
+	requestStack   message = nil
+	RoutingContext []uint32
 )
 
 const (
@@ -206,8 +207,8 @@ func readHandler(c, t uint8, d []byte) (m message) {
 	return
 }
 
-// DialASP connects and active ASP
-func DialASP(c net.Conn) (e error) {
+// Dial connects and active ASP
+func Dial(c net.Conn) (e error) {
 	go func() {
 		// event handler
 		for e, ok := <-eventStack; ok; e, ok = <-eventStack {
@@ -251,7 +252,10 @@ func DialASP(c net.Conn) (e error) {
 	e = <-r
 
 	if e == nil {
-		eventStack <- &ASPAC{result: r}
+		eventStack <- &ASPAC{
+			mode:   Loadshare,
+			ctx:    RoutingContext,
+			result: r}
 		e = <-r
 	}
 

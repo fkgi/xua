@@ -48,8 +48,8 @@ ASPAC is ASP Active message. (Message type = 0x01)
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type ASPAC struct {
-	// mode uint32
-	// ctx  []uint32
+	mode uint32
+	ctx  []uint32
 	// tid  *Label
 	// drn     *Label
 	// info   string
@@ -78,14 +78,14 @@ func (m *ASPAC) marshal() (uint8, uint8, []byte) {
 	buf := new(bytes.Buffer)
 
 	// Traffic Mode Type (Optional)
-	// if m.mode != 0 {
-	//	writeUint32(buf, 0x0008, m.mode)
-	// }
+	if m.mode != 0 {
+		writeUint32(buf, 0x0008, m.mode)
+	}
 
 	// Routing Context (Optional)
-	// if len(m.ctx) != 0 {
-	//	writeRoutingContext(buf, m.ctx)
-	// }
+	if len(m.ctx) != 0 {
+		writeRoutingContext(buf, m.ctx)
+	}
 
 	// TID Label (Optional)
 	// if m.tid != nil {
@@ -183,8 +183,8 @@ ASPACAck is ASP Active Ack message. (Message type = 0x03)
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type ASPACAck struct {
-	// mode uint32
-	// ctx  []uint32
+	mode uint32
+	ctx  []uint32
 	// info    string
 }
 
@@ -202,12 +202,12 @@ func (m *ASPACAck) marshal() (uint8, uint8, []byte) {
 
 func (m *ASPACAck) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 	switch t {
-	// case 0x000B:
-	//	// Traffic Mode Type (Optional)
-	//	m.mode, e = readUint32(r, l)
-	// case 0x0006:
-	//	// Routing Context (Optional)
-	//	m.ctx, e = readRoutingContext(r, l)
+	case 0x000B:
+		// Traffic Mode Type (Optional)
+		m.mode, e = readUint32(r, l)
+	case 0x0006:
+		// Routing Context (Optional)
+		m.ctx, e = readRoutingContext(r, l)
 	// case 0x0004:
 	// Info String (Optional)
 	// 	m.info, e = readInfo(r, l)
