@@ -6,7 +6,7 @@ import (
 )
 
 /*
-MGMT: Management Messages
+MGMT: UA Management Messages
 Message class = 0x00
 */
 
@@ -149,3 +149,7 @@ func (m *NTFY) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 	}
 	return
 }
+
+// 0x02 TEI Status Request
+// 0x03 TEI Status Confirm
+// 0x04 TEI Status Indication

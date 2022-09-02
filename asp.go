@@ -38,44 +38,68 @@ const (
 )
 
 /*
-const (
-	MGMT  byte = 0x00 //UA Management (MGMT) Message
-	TF    byte = 0x01 //MTP3 Transfer (TF) Messages
-	SSNM  byte = 0x02 //SS7 Signalling Network Management (SSNM) Messages
-	ASPSM byte = 0x03 //ASP State Maintenance (ASPSM) Messages
-	ASPTM byte = 0x04 //ASP Traffic Maintenance (ASPTM) Messages
-	QPTM  byte = 0x05 //Q.921/Q.931 Boundary Primitives Transport (QPTM) Messages
-	MAUP  byte = 0x06 //MTP2 User Adaptation (MAUP) Messages
-	CL    byte = 0x07 //SCCP Connectionless (CL) Messages
-	CO    byte = 0x08 //SCCP Connection-Oriented (CO) Messages
-	RKM   byte = 0x09 //Routing Key Management (RKM) Messages
-	IIM   byte = 0x0a //Interface Identifier Management (IIM) Messages
+TF: MTP3 Transfer Messages
+Message class = 0x01
+// 0x01 Payload Data (DATA)
 
-	ERR  byte = 0x00
-	NTFY byte = 0x01
+QPTM: Q.921/Q.931 Boundary Primitives Transport Messages
+Message class = 0x05
+// 0x01 Data Request Message
+// 0x02 Data Indication Message
+// 0x03 Unit Data Request Message
+// 0x04 Unit Data Indication Message
+// 0x05 Establish Request
+// 0x06 Establish Confirm
+// 0x07 Establish Indication
+// 0x08 Release Request
+// 0x09 Release Confirm
+// 0x0a Release Indication
 
-	DUNA byte = 0x01
-	DAVA byte = 0x02
-	DAUD byte = 0x03
-	SCON byte = 0x04
-	DUPU byte = 0x05
-	DRST byte = 0x06
+MAUP: MTP2 User Adaptation Messages
+Message class = 0x06
+// 0x01 Data
+// 0x02 Establish Request
+// 0x03 Establish Confirm
+// 0x04 Release Request
+// 0x05 Release Confirm
+// 0x06 Release Indication
+// 0x07 State Request
+// 0x08 State Confirm
+// 0x09 State Indication
+// 0x0a Data Retrieval Request
+// 0x0b Data Retrieval Confirm
+// 0x0c Data Retrieval Indication
+// 0x0d Data Retrieval Complete Indication
+// 0x0e Congestion Indication
+// 0x0f Data Acknowledge
 
-	ASPUP    byte = 0x01
-	ASPDN    byte = 0x02
-	BEAT     byte = 0x03
-	ASPUPack byte = 0x04
-	ASPDNack byte = 0x05
-	BEATack  byte = 0x06
+CO: SCCP Connection-Oriented Messages
+Message class = 0x08
+// 0x01 Connection Request (CORE)
+// 0x02 Connection Acknowledge (COAK)
+// 0x03 Connection Refused (COREF)
+// 0x04 Release Request (RELRE)
+// 0x05 Release Complete (RELCO)
+// 0x06 Reset Confirm (RESCO)
+// 0x07 Reset Request (RESRE)
+// 0x08 Connection Oriented Data Transfer (CODT)
+// 0x09 Connection Oriented Data Acknowledge (CODA)
+// 0x0a Connection Oriented Error (COERR)
+// 0x0b Inactivity Test (COIT)
 
-	ASPAC    byte = 0x01
-	ASPIA    byte = 0x02
-	ASPACack byte = 0x03
-	ASPIAack byte = 0x04
+RKM: Routing Key Management Messages
+Message class = 0x09
+// 0x01 Registration Request (REG REQ)
+// 0x02 Registration Response (REG RSP)
+// 0x03 Deregistration Request (DEREG REQ)
+// 0x04 Deregistration Response (DEREG RSP)
 
-	CLDT byte = 0x01
-	CLDR byte = 0x02
-)
+IIM: Interface Identifier Management Messages
+Message class = 0x0a
+// 0x01 Registration Request (REG REQ)
+// 0x02 Registration Response (REG RSP)
+// 0x03 Deregistration Request (DEREG REQ)
+// 0x04 Deregistration Response (DEREG RSP)
 */
 
 /*
@@ -131,9 +155,8 @@ func writeHandler(c net.Conn, m message) (e error) {
 		requestStack = m
 		time.AfterFunc(tack, func() {
 			if requestStack == m {
-				eventStack <- &ERR{
-					code: 0x07, // Protocol Error
-				}
+				// Protocol Error
+				eventStack <- &ERR{code: 0x07}
 			}
 		})
 	}
@@ -208,7 +231,7 @@ func readHandler(c, t uint8, d []byte) (m message) {
 }
 
 // Dial connects and active ASP
-func Dial(c net.Conn) (e error) {
+func DialASP(c net.Conn) (e error) {
 	go func() {
 		// event handler
 		for e, ok := <-eventStack; ok; e, ok = <-eventStack {
@@ -407,17 +430,6 @@ func write(c net.Conn, mclass msgClass, mtype byte, body *bytes.Buffer) error {
 	return buf.Flush()
 }
 
-func writeParam(buf *bytes.Buffer, tag, length int) {
-	binary.Write(buf, binary.BigEndian, uint16(tag))
-	binary.Write(buf, binary.BigEndian, uint16(length))
-}
-
-func (a ASP) msgHandler() {
-	for {
-
-	}
-}
-
 func read(c net.Conn) (mclass msgClass, mtype byte, body *bytes.Buffer, e error) {
 	buf := make([]byte, 4)
 	if _, e = c.Read(buf); e != nil {
@@ -451,108 +463,3 @@ func read(c net.Conn) (mclass msgClass, mtype byte, body *bytes.Buffer, e error)
 	return
 }
 */
-// MGMT
-
-// 0x02 TEI Status Request
-// 0x03 TEI Status Confirm
-// 0x04 TEI Status Indication
-
-// TF
-// 0x01 Payload Data (DATA)
-
-// SSNM
-// 0x01 Destination Unavailable (DUNA)
-// 0x02 Destination Available (DAVA)
-/*
-  0x03 Destination State Audit (DAUD)
-  ASP -> SG
-0                   1                   2                   3
-0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0006          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                       Routing Context                         /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0012          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                        Affected Point Code                    /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x8003          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                              SSN                              |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x010C          |            Length             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                           User/Cause                          |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|         Tag = 0x0004          |             Length            |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/                          Info String                          /
-\                                                               \
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-*/
-// 0x04 Signalling Congestion (SCON)
-// 0x05 Destination User Part Unavailable (DUPU)
-// 0x06 Destination Restricted (DRST)
-
-// ASPSM
-// 0x03 Heartbeat (BEAT)
-// 0x06 Heartbeat Ack (BEAT ACK)
-
-// QPTM
-// 0x01 Data Request Message
-// 0x02 Data Indication Message
-// 0x03 Unit Data Request Message
-// 0x04 Unit Data Indication Message
-// 0x05 Establish Request
-// 0x06 Establish Confirm
-// 0x07 Establish Indication
-// 0x08 Release Request
-// 0x09 Release Confirm
-// 0x0a Release Indication
-
-// MAUP
-// 0x01 Data
-// 0x02 Establish Request
-// 0x03 Establish Confirm
-// 0x04 Release Request
-// 0x05 Release Confirm
-// 0x06 Release Indication
-// 0x07 State Request
-// 0x08 State Confirm
-// 0x09 State Indication
-// 0x0a Data Retrieval Request
-// 0x0b Data Retrieval Confirm
-// 0x0c Data Retrieval Indication
-// 0x0d Data Retrieval Complete Indication
-// 0x0e Congestion Indication
-// 0x0f Data Acknowledge
-
-// CL
-
-// CO
-// 0x01 Connection Request (CORE)
-// 0x02 Connection Acknowledge (COAK)
-// 0x03 Connection Refused (COREF)
-// 0x04 Release Request (RELRE)
-// 0x05 Release Complete (RELCO)
-// 0x06 Reset Confirm (RESCO)
-// 0x07 Reset Request (RESRE)
-// 0x08 Connection Oriented Data Transfer (CODT)
-// 0x09 Connection Oriented Data Acknowledge (CODA)
-// 0x0a Connection Oriented Error (COERR)
-// 0x0b Inactivity Test (COIT)
-
-// RKM
-// 0x01 Registration Request (REG REQ)
-// 0x02 Registration Response (REG RSP)
-// 0x03 Deregistration Request (DEREG REQ)
-// 0x04 Deregistration Response (DEREG RSP)
-
-// IIM
-// 0x01 Registration Request (REG REQ)
-// 0x02 Registration Response (REG RSP)
-// 0x03 Deregistration Request (DEREG REQ)
-// 0x04 Deregistration Response (DEREG RSP)
