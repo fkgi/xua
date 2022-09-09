@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"net"
 )
 
 /*
@@ -35,8 +34,8 @@ type ASPUP struct {
 	result chan error
 }
 
-func (m *ASPUP) handleMessage(c net.Conn) {
-	if e := writeHandler(c, m); e != nil {
+func (m *ASPUP) handleMessage() {
+	if e := writeHandler(m); e != nil {
 		m.result <- e
 	}
 }
@@ -88,8 +87,8 @@ type ASPDN struct {
 	result chan error
 }
 
-func (m *ASPDN) handleMessage(c net.Conn) {
-	if e := writeHandler(c, m); e != nil {
+func (m *ASPDN) handleMessage() {
+	if e := writeHandler(m); e != nil {
 		m.result <- e
 	}
 }
@@ -133,7 +132,7 @@ type BEAT struct {
 	data []byte
 }
 
-func (m *BEAT) handleMessage(c net.Conn) {
+func (m *BEAT) handleMessage() {
 }
 func (m *BEAT) handleResult(msg message) {
 }
@@ -180,7 +179,7 @@ type ASPUPAck struct {
 	// info   string
 }
 
-func (m *ASPUPAck) handleMessage(c net.Conn) {
+func (m *ASPUPAck) handleMessage() {
 	if requestStack != nil {
 		requestStack.handleResult(m)
 		requestStack = nil
@@ -219,7 +218,7 @@ type ASPDNAck struct {
 	// info   string
 }
 
-func (m *ASPDNAck) handleMessage(c net.Conn) {
+func (m *ASPDNAck) handleMessage() {
 	if requestStack != nil {
 		requestStack.handleResult(m)
 		requestStack = nil
@@ -260,7 +259,7 @@ type BEATAck struct {
 	data []byte
 }
 
-func (m *BEATAck) handleMessage(c net.Conn) {
+func (m *BEATAck) handleMessage() {
 }
 func (m *BEATAck) handleResult(msg message) {
 }

@@ -36,6 +36,12 @@ const (
 	sctpAdaptationIndication = C.SCTP_ADAPTATION_INDICATION
 	sctpPartialDeliveryEvent = C.SCTP_PARTIAL_DELIVERY_EVENT
 	sctpSenderDryEvent       = C.SCTP_SENDER_DRY_EVENT
+
+	sctpCommUp       = C.SCTP_COMM_UP
+	sctpCommLost     = C.SCTP_COMM_LOST
+	sctpRestart      = C.SCTP_RESTART
+	sctpShutdownComp = C.SCTP_SHUTDOWN_COMP
+	sctpCantStrAssoc = C.SCTP_CANT_STR_ASSOC
 )
 
 type assocT C.sctp_assoc_t

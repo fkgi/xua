@@ -2,7 +2,6 @@ package xua
 
 import (
 	"io"
-	"net"
 )
 
 /*
@@ -51,7 +50,7 @@ type ERR struct {
 	// info []byte
 }
 
-func (m *ERR) handleMessage(c net.Conn) {
+func (m *ERR) handleMessage() {
 	if requestStack != nil {
 		requestStack.handleResult(m)
 		requestStack = nil
@@ -122,7 +121,7 @@ type NTFY struct {
 	// info    string
 }
 
-func (m *NTFY) handleMessage(c net.Conn) {}
+func (m *NTFY) handleMessage()           {}
 func (m *NTFY) handleResult(msg message) {}
 
 func (m *NTFY) marshal() (uint8, uint8, []byte) {

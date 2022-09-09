@@ -6,6 +6,7 @@ import (
 	"io"
 )
 
+/*
 func writeInfo(w io.Writer, info string) {
 	d := []byte(info)
 	if len(d) > 248 {
@@ -28,6 +29,7 @@ func readInfo(r io.ReadSeeker, l uint16) (v string, e error) {
 	v = string(d)
 	return
 }
+*/
 
 func writeRoutingContext(w io.Writer, cx []uint32) {
 	binary.Write(w, binary.BigEndian, uint16(0x0006))

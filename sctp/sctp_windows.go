@@ -28,6 +28,12 @@ const (
 	sctpAdaptationIndication = 0x0006
 	sctpPartialDeliveryEvent = 0x0007
 	sctpSenderDryEvent       = 0x000a
+
+	sctpCommUp       = 0x0001
+	sctpCommLost     = 0x0002
+	sctpRestart      = 0x0003
+	sctpShutdownComp = 0x0004
+	sctpCantStrAssoc = 0x0005
 )
 
 type assocT uint32

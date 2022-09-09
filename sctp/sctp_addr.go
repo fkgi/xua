@@ -92,8 +92,7 @@ func (a *SCTPAddr) rawAddr() (unsafe.Pointer, int) {
 	if a.IP[0].To4() != nil {
 		addr := make([]syscall.RawSockaddrInet4, len(a.IP))
 		for n, i := range a.IP {
-			i = i.To4()
-			if i == nil {
+			if i = i.To4(); i == nil {
 				return nil, 0
 			}
 			addr[n].Family = syscall.AF_INET
@@ -104,10 +103,9 @@ func (a *SCTPAddr) rawAddr() (unsafe.Pointer, int) {
 	} else if a.IP[0].To16() != nil {
 		addr := make([]syscall.RawSockaddrInet6, len(a.IP))
 		for n, i := range a.IP {
-			if i.To4() != nil {
+			if i = i.To16(); i == nil {
 				return nil, 0
 			}
-			i = i.To16()
 			addr[n].Family = syscall.AF_INET6
 			addr[n].Port = p
 			// addr[n].Flowinfo

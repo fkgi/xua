@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"net"
 )
 
 /*
@@ -52,7 +51,7 @@ type DUNA struct {
 	// info    string
 }
 
-func (m *DUNA) handleMessage(c net.Conn) {}
+func (m *DUNA) handleMessage()           {}
 func (m *DUNA) handleResult(msg message) {}
 
 func (m *DUNA) marshal() (uint8, uint8, []byte) {
@@ -122,7 +121,7 @@ type DAVA struct {
 	// info    string
 }
 
-func (m *DAVA) handleMessage(c net.Conn) {}
+func (m *DAVA) handleMessage()           {}
 func (m *DAVA) handleResult(msg message) {}
 
 func (m *DAVA) marshal() (uint8, uint8, []byte) {
@@ -193,7 +192,7 @@ type DAUD struct {
 	// info    string
 }
 
-func (m *DAUD) handleMessage(c net.Conn) {}
+func (m *DAUD) handleMessage()           {}
 func (m *DAUD) handleResult(msg message) {}
 
 func (m *DAUD) marshal() (uint8, uint8, []byte) {
@@ -276,7 +275,7 @@ type SCON struct {
 	// info       string
 }
 
-func (m *SCON) handleMessage(c net.Conn) {}
+func (m *SCON) handleMessage()           {}
 func (m *SCON) handleResult(msg message) {}
 
 func (m *SCON) marshal() (uint8, uint8, []byte) {
@@ -346,7 +345,7 @@ type DUPU struct {
 	// info    string
 }
 
-func (m *DUPU) handleMessage(c net.Conn) {}
+func (m *DUPU) handleMessage()           {}
 func (m *DUPU) handleResult(msg message) {}
 
 func (m *DUPU) marshal() (uint8, uint8, []byte) {
@@ -415,7 +414,7 @@ type DRST struct {
 	// info    string
 }
 
-func (m *DRST) handleMessage(c net.Conn) {}
+func (m *DRST) handleMessage()           {}
 func (m *DRST) handleResult(msg message) {}
 
 func (m *DRST) marshal() (uint8, uint8, []byte) {

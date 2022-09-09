@@ -1,19 +1,17 @@
 package xua
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
-	"net"
 	"time"
+
+	"github.com/fkgi/xua/sctp"
 )
 
 var (
-	state      = down
 	eventStack = make(chan message, 1024)
-	// msgStack   = make(map[uint16]chan message)
 
 	ta    = time.Second * 2
 	tr    = time.Second * 2
@@ -23,12 +21,6 @@ var (
 
 	requestStack   message = nil
 	RoutingContext []uint32
-)
-
-const (
-	down     byte = iota
-	inactive byte = iota
-	active   byte = iota
 )
 
 const (
@@ -116,7 +108,7 @@ Message of xUA
 */
 type message interface {
 	// handleMessage handles this message
-	handleMessage(net.Conn)
+	handleMessage()
 
 	// handleResult handles result of this message
 	handleResult(message)
@@ -128,12 +120,12 @@ type message interface {
 	unmarshal(uint16, uint16, io.ReadSeeker) error
 }
 
-func writeHandler(c net.Conn, m message) (e error) {
+func writeHandler(m message) (e error) {
 	if requestStack != nil {
 		e = errors.New("any other request is waiting answer")
 	} else {
 		cls, typ, b := m.marshal()
-		buf := bufio.NewWriter(c)
+		buf := new(bytes.Buffer)
 
 		// version
 		buf.WriteByte(1)
@@ -148,7 +140,7 @@ func writeHandler(c net.Conn, m message) (e error) {
 		// Message Data
 		buf.Write(b)
 
-		e = buf.Flush()
+		e = sctp.Write(buf.Bytes())
 	}
 
 	if e == nil {
@@ -163,17 +155,30 @@ func writeHandler(c net.Conn, m message) (e error) {
 	return
 }
 
-func readHandler(c, t uint8, d []byte) (m message) {
-	switch c {
+func readHandler(buf []byte) {
+	// rx message handler
+	if buf[0] != 1 || len(buf) < 8 {
+		// invalid version
+		return
+	}
+
+	r := bytes.NewReader(buf[4:])
+	var l uint32
+	if e := binary.Read(r, binary.BigEndian, &l); e != nil {
+		return
+	}
+
+	var m message = nil
+	switch buf[2] {
 	case 0x00:
-		switch t {
+		switch buf[3] {
 		case 0x00:
 			m = new(ERR)
 		case 0x01:
 			m = new(NTFY)
 		}
 	case 0x02:
-		switch t {
+		switch buf[3] {
 		case 0x01:
 			m = new(DUNA)
 		case 0x02:
@@ -186,7 +191,7 @@ func readHandler(c, t uint8, d []byte) (m message) {
 			m = new(DRST)
 		}
 	case 0x03:
-		switch t {
+		switch buf[3] {
 		case 0x04:
 			m = new(ASPUPAck)
 		case 0x05:
@@ -195,14 +200,14 @@ func readHandler(c, t uint8, d []byte) (m message) {
 			m = new(BEATAck)
 		}
 	case 0x04:
-		switch t {
+		switch buf[3] {
 		case 0x03:
 			m = new(ASPACAck)
 		case 0x04:
 			m = new(ASPIAAck)
 		}
 	case 0x07:
-		switch t {
+		switch buf[3] {
 		case 0x01:
 			m = &CLDT{tx: false}
 		case 0x02:
@@ -210,88 +215,69 @@ func readHandler(c, t uint8, d []byte) (m message) {
 		}
 	}
 
-	if m != nil {
-		r := bytes.NewReader(d)
-		for r.Len() > 0 {
-			var t, l uint16
-			if e := binary.Read(r, binary.BigEndian, &t); e != nil {
-				break
-			}
-			if e := binary.Read(r, binary.BigEndian, &l); e != nil {
-				break
-			}
-			l -= 4
+	if m == nil {
+		return
+	}
 
-			if e := m.unmarshal(t, l, r); e != nil {
-				break
-			}
+	r = bytes.NewReader(buf[8 : 8+l])
+	for r.Len() > 0 {
+		var t, l uint16
+		if e := binary.Read(r, binary.BigEndian, &t); e != nil {
+			break
+		}
+		if e := binary.Read(r, binary.BigEndian, &l); e != nil {
+			break
+		}
+		l -= 4
+
+		if e := m.unmarshal(t, l, r); e != nil {
+			break
 		}
 	}
-	return
+	eventStack <- m
 }
 
-// Dial connects and active ASP
-func DialASP(c net.Conn) (e error) {
-	go func() {
-		// event handler
-		for e, ok := <-eventStack; ok; e, ok = <-eventStack {
-			e.handleMessage(c)
-		}
-	}()
-	go func() {
-		// rx message handler
-		buf := make([]byte, 4)
-		for n, e := c.Read(buf); e != nil && n == 4; n, e = c.Read(buf) {
-			if buf[0] != 1 {
-				// invalid version
-				continue
-			}
-
-			var l uint32
-			if e = binary.Read(c, binary.BigEndian, &l); e != nil {
-				break
-			}
-
-			data := make([]byte, l)
-			offset := 0
-			for offset < 1 {
-				n, e = c.Read(data[offset:])
-				offset += n
-				if e != nil {
-					break
+// Serve connects and active ASP
+func Serve(handleData func([]byte), handleUp, handleDown func()) error {
+	return sctp.Serve(
+		readHandler,
+		func() {
+			go func() {
+				// event handler
+				for e, ok := <-eventStack; ok; e, ok = <-eventStack {
+					e.handleMessage()
 				}
+			}()
+
+			r := make(chan error, 1)
+			eventStack <- &ASPUP{result: r}
+			if e := <-r; e != nil {
+				sctp.Abort("invalid ASP message")
+				return
+			}
+			eventStack <- &ASPAC{
+				mode:   Loadshare,
+				ctx:    RoutingContext,
+				result: r}
+			if e := <-r; e != nil {
+				sctp.Abort("invalid ASP message")
 			}
 
-			m := readHandler(buf[2], buf[3], data)
-			if m != nil {
-				eventStack <- m
-			}
-		}
-		close(eventStack)
-	}()
-
-	r := make(chan error, 1)
-	eventStack <- &ASPUP{result: r}
-	e = <-r
-
-	if e == nil {
-		eventStack <- &ASPAC{
-			mode:   Loadshare,
-			ctx:    RoutingContext,
-			result: r}
-		e = <-r
-	}
-
-	return
+			go handleUp()
+		},
+		func() {
+			close(eventStack)
+			go handleDown()
+		})
 }
 
 // Close disconnect ASP
-func Close() (e error) {
+func Close() error {
 	r := make(chan error, 1)
 	eventStack <- &ASPDN{result: r}
-	e = <-r
+	<-r
 
-	return
+	return sctp.Close()
 }
 
 // Activate ASPAC

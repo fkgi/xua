@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net"
 )
 
 /*
@@ -12,12 +11,13 @@ ASPTM: ASP Traffic Maintenance Messages
 Message class = 0x04
 */
 
+/*
 type Label struct {
 	start uint8
 	end   uint8
 	value uint16
 }
-
+*/
 /*
 ASPAC is ASP Active message. (Message type = 0x01)
 
@@ -51,14 +51,14 @@ type ASPAC struct {
 	mode uint32
 	ctx  []uint32
 	// tid  *Label
-	// drn     *Label
-	// info   string
+	// drn  *Label
+	// info string
 
 	result chan error
 }
 
-func (m *ASPAC) handleMessage(c net.Conn) {
-	if e := writeHandler(c, m); e != nil {
+func (m *ASPAC) handleMessage() {
+	if e := writeHandler(m); e != nil {
 		m.result <- e
 	}
 }
@@ -138,7 +138,7 @@ type ASPIA struct {
 	// info    string
 }
 
-func (m *ASPIA) handleMessage(c net.Conn) {
+func (m *ASPIA) handleMessage() {
 }
 func (m *ASPIA) handleResult(msg message) {
 }
@@ -188,7 +188,7 @@ type ASPACAck struct {
 	// info    string
 }
 
-func (m *ASPACAck) handleMessage(c net.Conn) {
+func (m *ASPACAck) handleMessage() {
 	if requestStack != nil {
 		requestStack.handleResult(m)
 		requestStack = nil
@@ -239,7 +239,7 @@ type ASPIAAck struct {
 	// info    string
 }
 
-func (m *ASPIAAck) handleMessage(c net.Conn) {
+func (m *ASPIAAck) handleMessage() {
 	if requestStack != nil {
 		requestStack.handleResult(m)
 		requestStack = nil

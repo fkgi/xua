@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"net"
 	"strconv"
 )
 
@@ -184,7 +183,7 @@ type CLDT struct {
 	data []byte
 }
 
-func (m *CLDT) handleMessage(c net.Conn) {
+func (m *CLDT) handleMessage() {
 }
 
 func (m *CLDT) handleResult(msg message) {
@@ -329,7 +328,7 @@ type CLDR struct {
 	data []byte
 }
 
-func (m *CLDR) handleMessage(c net.Conn) {
+func (m *CLDR) handleMessage() {
 }
 func (m *CLDR) handleResult(msg message) {
 }
