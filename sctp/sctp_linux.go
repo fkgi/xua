@@ -27,15 +27,20 @@ const (
 	// SOL_SCTP    = C.SOL_SCTP
 	// SCTP_EVENTS = C.SCTP_EVENTS
 
-	msgNotification          = C.MSG_NOTIFICATION
-	sctpAssocChange          = C.SCTP_ASSOC_CHANGE
-	sctpPeerAddrChange       = C.SCTP_PEER_ADDR_CHANGE
-	sctpRemoteError          = C.SCTP_REMOTE_ERROR
-	sctpSendFailed           = C.SCTP_SEND_FAILED
-	sctpShutdownEvent        = C.SCTP_SHUTDOWN_EVENT
-	sctpAdaptationIndication = C.SCTP_ADAPTATION_INDICATION
-	sctpPartialDeliveryEvent = C.SCTP_PARTIAL_DELIVERY_EVENT
-	sctpSenderDryEvent       = C.SCTP_SENDER_DRY_EVENT
+	msgNotification              = C.MSG_NOTIFICATION
+	sctpDataIO                   = C.SCTP_DATA_IO_EVENT
+	sctpAssocChange              = C.SCTP_ASSOC_CHANGE
+	sctpPeerAddrChange           = C.SCTP_PEER_ADDR_CHANGE
+	sctpSendFailed               = C.SCTP_SEND_FAILED
+	sctpRemoteError              = C.SCTP_REMOTE_ERROR
+	sctpShutdownEvent            = C.SCTP_SHUTDOWN_EVENT
+	sctpPartialDeliveryEvent     = C.SCTP_PARTIAL_DELIVERY_EVENT
+	sctpAdaptationIndication     = C.SCTP_ADAPTATION_INDICATION
+	sctpAuthenticationIndication = C.SCTP_AUTHENTICATION_INDICATION
+	sctpSenderDryEvent           = C.SCTP_SENDER_DRY_EVENT
+	sctpStreamResetEvent         = C.SCTP_STREAM_RESET_EVENT
+	sctpAssocResetEvent          = C.SCTP_ASSOC_RESET_EVENT
+	sctpStreamChangeEvent        = C.SCTP_STREAM_CHANGE_EVENT
 
 	sctpCommUp       = C.SCTP_COMM_UP
 	sctpCommLost     = C.SCTP_COMM_LOST
@@ -45,6 +50,50 @@ const (
 )
 
 type assocT C.sctp_assoc_t
+
+func setNotify(fd int) error {
+	type opt struct {
+		dataIo          uint8
+		association     uint8
+		address         uint8
+		sendFailed      uint8
+		peerError       uint8
+		shutdown        uint8
+		partialDelivery uint8
+		adaptationLayer uint8
+		authentication  uint8
+		senderDry       uint8
+	}
+
+	event := opt{
+		dataIo:          1,
+		association:     1,
+		address:         0,
+		sendFailed:      0,
+		peerError:       0,
+		shutdown:        0,
+		partialDelivery: 0,
+		adaptationLayer: 0,
+		authentication:  0,
+		senderDry:       0}
+	l := unsafe.Sizeof(event)
+	p := unsafe.Pointer(&event)
+
+	return setSockOpt(fd, C.SCTP_EVENTS, p, l)
+}
+
+func setSockOpt(fd, opt int, p unsafe.Pointer, l uintptr) error {
+	n, e := C.setsockopt(
+		C.int(fd),
+		C.SOL_SCTP,
+		C.int(opt),
+		p,
+		C.socklen_t(l))
+	if int(n) < 0 {
+		return e
+	}
+	return nil
+}
 
 func sockOpenV4() (int, error) {
 	return syscall.Socket(

@@ -18,6 +18,7 @@ const (
 	// SCTP_SENDALL = 0x1000
 	// SCTP_EOR = 0x2000
 	// SCTP_SACK_IMMEDIATELY = 0x4000
+	sctpEvents = 0x0000000c
 
 	msgNotification          = 0x1000
 	sctpAssocChange          = 0x0001
@@ -75,6 +76,48 @@ func init() {
 	if e != nil {
 		log.Fatal(e)
 	}
+}
+
+func setNotify(fd int) error {
+	type opt struct {
+		dataIo          uint8
+		association     uint8
+		address         uint8
+		sendFailure     uint8
+		peerError       uint8
+		shutdown        uint8
+		partialDelivery uint8
+		adaptationLayer uint8
+		authentication  uint8
+		senderDry       uint8
+		streamReset     uint8
+	}
+
+	event := opt{
+		dataIo:          1,
+		association:     1,
+		address:         0,
+		sendFailure:     0,
+		peerError:       0,
+		shutdown:        1,
+		partialDelivery: 0,
+		adaptationLayer: 0,
+		authentication:  0,
+		senderDry:       0,
+		streamReset:     0}
+	l := unsafe.Sizeof(event)
+	p := unsafe.Pointer(&event)
+
+	return setSockOpt(fd, sctpEvents, p, l)
+}
+
+func setSockOpt(fd, opt int, p unsafe.Pointer, l uintptr) error {
+	return syscall.Setsockopt(
+		syscall.Handle(fd),
+		ipprotoSctp,
+		int32(opt),
+		(*byte)(p),
+		int32(l))
 }
 
 func sockOpenV4() (int, error) {

@@ -3,6 +3,7 @@ package sctp
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"syscall"
@@ -10,12 +11,12 @@ import (
 
 var (
 	// LocalAddr is SCTP local address
-	LocalAddr SCTPAddr
+	LocalAddr *SCTPAddr
 	// PeerAddr is SCTP peer address
-	PeerAddr SCTPAddr
+	PeerAddr *SCTPAddr
 
 	// ProtocolID of data layer
-	ProtocolID uint32 = 4
+	ProtocolID uint32 = 67108864
 
 	sock    int
 	assocID assocT
@@ -53,6 +54,16 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 		return
 	}
 
+	// set notifycation enabled
+	e = setNotify(sock)
+	if e != nil {
+		sockClose(sock)
+		e = &net.OpError{
+			Op: "setsockopt", Net: "sctp",
+			Addr: LocalAddr, Err: e}
+		return
+	}
+
 	// bind SCTP connection to LocalAddr
 	ptr, n := LocalAddr.rawAddr()
 	if e = sctpBindx(sock, ptr, n); e != nil {
@@ -79,7 +90,7 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 	flag := 0
 
 	for {
-		n, e := sctpRecvmsg(sock, buf, &info, &flag)
+		n, e = sctpRecvmsg(sock, buf, &info, &flag)
 		if e != nil {
 			if eno, ok := e.(*syscall.Errno); ok && eno.Temporary() {
 				continue
@@ -95,7 +106,7 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 
 		r := bytes.NewReader(buf[:n])
 		var chtype uint16
-		if e = binary.Read(r, binary.BigEndian, &chtype); e != nil {
+		if e = binary.Read(r, binary.LittleEndian, &chtype); e != nil {
 			continue
 		}
 		if chtype != sctpAssocChange {
@@ -107,18 +118,18 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 		}
 		/*
 			var flags uint16
-			if e := binary.Read(r, binary.BigEndian, &flags); e != nil {
+			if e := binary.Read(r, binary.LittleEndian, &flags); e != nil {
 				continue
 			}
 			var length uint32
-			if e := binary.Read(r, binary.BigEndian, &length); e != nil {
+			if e := binary.Read(r, binary.LittleEndian, &length); e != nil {
 				continue
 			}
 			/*
 				ToDo: length check
 		*/
 		var state uint16
-		if e = binary.Read(r, binary.BigEndian, &state); e != nil {
+		if e = binary.Read(r, binary.LittleEndian, &state); e != nil {
 			continue
 		}
 		if _, e = r.Seek(int64(6), io.SeekCurrent); e != nil {
@@ -126,20 +137,20 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 		}
 		/*
 			var sacError uint16
-			if e := binary.Read(r, binary.BigEndian, &sacError); e != nil {
+			if e := binary.Read(r, binary.LittleEndian, &sacError); e != nil {
 				return
 			}
 			var outboundStreams uint16
-			if e := binary.Read(r, binary.BigEndian, &outboundStreams); e != nil {
+			if e := binary.Read(r, binary.LittleEndian, &outboundStreams); e != nil {
 				return
 			}
 			var inboundStreams uint16
-			if e := binary.Read(r, binary.BigEndian, &inboundStreams); e != nil {
+			if e := binary.Read(r, binary.LittleEndian, &inboundStreams); e != nil {
 				return
 			}
 		*/
 		var id assocT
-		if e = binary.Read(r, binary.BigEndian, &id); e != nil {
+		if e = binary.Read(r, binary.LittleEndian, &id); e != nil {
 			continue
 		}
 		if id != assocID {
@@ -161,6 +172,7 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 }
 
 func Write(b []byte) (e error) {
+	fmt.Println(b)
 	buf := make([]byte, len(b))
 	copy(buf, b)
 

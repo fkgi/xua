@@ -79,7 +79,7 @@ func (m *ASPAC) marshal() (uint8, uint8, []byte) {
 
 	// Traffic Mode Type (Optional)
 	if m.mode != 0 {
-		writeUint32(buf, 0x0008, m.mode)
+		writeUint32(buf, 0x000b, m.mode)
 	}
 
 	// Routing Context (Optional)
