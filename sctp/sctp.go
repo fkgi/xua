@@ -3,7 +3,6 @@ package sctp
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"syscall"
@@ -162,8 +161,8 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 			go handleUp()
 		case sctpCommLost, sctpShutdownComp:
 			go handleDown()
-		case sctpRestart:
-		case sctpCantStrAssoc:
+			// case sctpRestart:
+			// case sctpCantStrAssoc:
 		}
 	}
 
@@ -172,7 +171,6 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 }
 
 func Write(b []byte) (e error) {
-	fmt.Println(b)
 	buf := make([]byte, len(b))
 	copy(buf, b)
 

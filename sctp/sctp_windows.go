@@ -99,7 +99,7 @@ func setNotify(fd int) error {
 		address:         0,
 		sendFailure:     0,
 		peerError:       0,
-		shutdown:        1,
+		shutdown:        0,
 		partialDelivery: 0,
 		adaptationLayer: 0,
 		authentication:  0,

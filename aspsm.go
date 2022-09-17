@@ -133,10 +133,9 @@ type BEAT struct {
 	data []byte
 }
 
-func (m *BEAT) handleMessage() {
-}
-func (m *BEAT) handleResult(msg message) {
-}
+func (m *BEAT) handleMessage()           {}
+func (m *BEAT) handleResult(msg message) {}
+
 func (m *BEAT) marshal() (uint8, uint8, []byte) {
 	buf := new(bytes.Buffer)
 
@@ -149,6 +148,7 @@ func (m *BEAT) marshal() (uint8, uint8, []byte) {
 	}
 	return 0x03, 0x03, buf.Bytes()
 }
+
 func (m *BEAT) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 	switch t {
 	case 0x0009:
@@ -225,8 +225,8 @@ func (m *ASPDNAck) handleMessage() {
 		requestStack = nil
 	}
 }
-func (m *ASPDNAck) handleResult(msg message) {
-}
+
+func (m *ASPDNAck) handleResult(msg message) {}
 
 func (m *ASPDNAck) marshal() (uint8, uint8, []byte) {
 	return 0x03, 0x05, nil
@@ -260,10 +260,9 @@ type BEATAck struct {
 	data []byte
 }
 
-func (m *BEATAck) handleMessage() {
-}
-func (m *BEATAck) handleResult(msg message) {
-}
+func (m *BEATAck) handleMessage()           {}
+func (m *BEATAck) handleResult(msg message) {}
+
 func (m *BEATAck) marshal() (uint8, uint8, []byte) {
 	buf := new(bytes.Buffer)
 

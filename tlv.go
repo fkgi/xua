@@ -111,3 +111,18 @@ func readUint8(r io.ReadSeeker, l uint16) (v uint8, e error) {
 	}
 	return
 }
+
+func writeData(w io.Writer, d []byte) {
+	binary.Write(w, binary.BigEndian, uint16(0x010B))
+	binary.Write(w, binary.BigEndian, uint16(4+len(d)))
+	w.Write(d)
+	if len(d)%4 != 0 {
+		w.Write(make([]byte, 4-len(d)%4))
+	}
+}
+
+func readData(r io.ReadSeeker, l uint16) (d []byte, e error) {
+	d = make([]byte, l)
+	_, e = r.Read(d)
+	return
+}

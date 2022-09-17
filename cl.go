@@ -206,7 +206,7 @@ func (m *CLDT) marshal() (uint8, uint8, []byte) {
 	m.cgpa.marshal(buf, 0x0102)
 
 	// Destination Address
-	m.cgpa.marshal(buf, 0x0103)
+	m.cdpa.marshal(buf, 0x0103)
 
 	// Sequence Control
 	if m.sequenceCtrl != 0 {
@@ -245,12 +245,16 @@ func (m *CLDT) marshal() (uint8, uint8, []byte) {
 	// }
 
 	// Data
+	writeData(buf, m.data)
 
 	return 0x07, 0x01, buf.Bytes()
 }
 
 func (m *CLDT) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 	switch t {
+	case 0x0006:
+		// Routing Context
+		m.ctx, e = readRoutingContext(r, l)
 	default:
 		_, e = r.Seek(int64(l), io.SeekCurrent)
 	}

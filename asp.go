@@ -192,12 +192,14 @@ func readHandler(buf []byte) {
 		}
 	case 0x03:
 		switch buf[3] {
+		case 0x03:
+			m = &BEAT{tx: false}
 		case 0x04:
 			m = new(ASPUPAck)
 		case 0x05:
 			m = new(ASPDNAck)
 		case 0x06:
-			m = new(BEATAck)
+			m = &BEATAck{tx: false}
 		}
 	case 0x04:
 		switch buf[3] {
@@ -219,8 +221,8 @@ func readHandler(buf []byte) {
 		return
 	}
 
-	r = bytes.NewReader(buf[8 : 8+l])
-	for r.Len() > 0 {
+	r = bytes.NewReader(buf[8:l])
+	for r.Len() > 8 {
 		var t, l uint16
 		if e := binary.Read(r, binary.BigEndian, &t); e != nil {
 			break
@@ -232,6 +234,10 @@ func readHandler(buf []byte) {
 
 		if e := m.unmarshal(t, l, r); e != nil {
 			break
+		}
+
+		if l%4 != 0 {
+			r.Seek(int64(4-l%4), io.SeekCurrent)
 		}
 	}
 	eventStack <- m
