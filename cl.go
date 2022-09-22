@@ -255,6 +255,9 @@ func (m *CLDT) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 	case 0x0006:
 		// Routing Context
 		m.ctx, e = readRoutingContext(r, l)
+	case 0x0115:
+		// Protocol Class
+		m.protocolClass, e = readUint8(r, l)
 	default:
 		_, e = r.Seek(int64(l), io.SeekCurrent)
 	}
