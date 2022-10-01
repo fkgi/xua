@@ -222,7 +222,7 @@ func readHandler(buf []byte) {
 	}
 
 	r = bytes.NewReader(buf[8:l])
-	for r.Len() > 8 {
+	for r.Len() > 4 {
 		var t, l uint16
 		if e := binary.Read(r, binary.BigEndian, &t); e != nil {
 			break
@@ -284,4 +284,35 @@ func Close() error {
 	<-r
 
 	return sctp.Close()
+}
+
+func Write(b []byte) {
+	eventStack <- &CLDT{
+		tx:  true,
+		ctx: RoutingContext,
+		cgpa: SCCPAddress{
+			NatureOfAddress: NAI_International,
+			NumberingPlan:   NPI_E164,
+			GlobalTitle:     "12345",
+			SubsystemNumber: 0x06},
+		cdpa: SCCPAddress{
+			NatureOfAddress: NAI_International,
+			NumberingPlan:   NPI_E164,
+			GlobalTitle:     "67890",
+			SubsystemNumber: 0x07},
+		data: b}
+	eventStack <- &CLDR{
+		tx:    true,
+		ctx:   RoutingContext,
+		cause: 0x0101,
+		cgpa: SCCPAddress{
+			NatureOfAddress: NAI_International,
+			NumberingPlan:   NPI_E164,
+			GlobalTitle:     "67890",
+			SubsystemNumber: 0x07},
+		cdpa: SCCPAddress{
+			NatureOfAddress: NAI_International,
+			NumberingPlan:   NPI_E164,
+			GlobalTitle:     "12345",
+			SubsystemNumber: 0x06}}
 }

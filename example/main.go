@@ -51,7 +51,9 @@ func main() {
 	log.Print("success as ", sctp.PeerAddr, "(remote)")
 
 	go func() {
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second)
+		xua.Write(make([]byte, 10))
+		time.Sleep(time.Second)
 		xua.Close()
 	}()
 

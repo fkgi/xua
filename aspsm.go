@@ -35,7 +35,6 @@ type ASPUP struct {
 }
 
 func (m *ASPUP) handleMessage() {
-	fmt.Println("handle ASPUP")
 	if e := writeHandler(m); e != nil {
 		m.result <- e
 	}

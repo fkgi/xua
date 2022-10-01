@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 )
 
 /*
@@ -136,9 +137,14 @@ ASPIA is ASP Inactive message. (Message type = 0x02)
 type ASPIA struct {
 	ctx []uint32
 	// info    string
+
+	result chan error
 }
 
 func (m *ASPIA) handleMessage() {
+	if e := writeHandler(m); e != nil {
+		m.result <- e
+	}
 }
 func (m *ASPIA) handleResult(msg message) {
 }
@@ -189,6 +195,7 @@ type ASPACAck struct {
 }
 
 func (m *ASPACAck) handleMessage() {
+	log.Println("aspacack", m.mode, m.ctx)
 	if requestStack != nil {
 		requestStack.handleResult(m)
 		requestStack = nil
