@@ -154,6 +154,7 @@ func sctpSend(fd int, b []byte, info *sndrcvInfo, flag int) (int, error) {
 	}
 	return int(n), nil
 }
+
 func sctpRecvmsg(fd int, b []byte, info *sndrcvInfo, flag *int) (int, error) {
 	n, e := C.sctp_recvmsg(
 		C.int(fd),

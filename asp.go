@@ -12,12 +12,11 @@ import (
 
 var (
 	eventStack = make(chan message, 1024)
+	handler    func([]byte)
 
-	ta    = time.Second * 2
-	tr    = time.Second * 2
-	tack  = time.Second * 2
-	tair  = time.Minute * 15
-	tbeat = time.Second * 30
+	// tr    = time.Second * 2 // Pending Recovery timer
+	tack = time.Second * 2 // Wait Response timer
+	// tbeat = time.Second * 30 // Heartbeat interval
 
 	requestStack   message = nil
 	RoutingContext []uint32
@@ -123,35 +122,35 @@ type message interface {
 func writeHandler(m message) (e error) {
 	if requestStack != nil {
 		e = errors.New("any other request is waiting answer")
-	} else {
-		cls, typ, b := m.marshal()
-		buf := new(bytes.Buffer)
+		return
+	}
+	cls, typ, b := m.marshal()
+	buf := new(bytes.Buffer)
 
-		// version
-		buf.WriteByte(1)
-		// reserved
-		buf.WriteByte(0)
-		// Message Class
-		buf.WriteByte(cls)
-		// Message Type
-		buf.WriteByte(typ)
-		// Message Length
-		binary.Write(buf, binary.BigEndian, uint32(len(b)+8))
-		// Message Data
-		buf.Write(b)
+	// version
+	buf.WriteByte(1)
+	// reserved
+	buf.WriteByte(0)
+	// Message Class
+	buf.WriteByte(cls)
+	// Message Type
+	buf.WriteByte(typ)
+	// Message Length
+	binary.Write(buf, binary.BigEndian, uint32(len(b)+8))
+	// Message Data
+	buf.Write(b)
 
-		e = sctp.Write(buf.Bytes())
+	if e = sctp.Write(buf.Bytes(), 0); e != nil {
+		return
 	}
 
-	if e == nil {
-		requestStack = m
-		time.AfterFunc(tack, func() {
-			if requestStack == m {
-				// Protocol Error
-				eventStack <- &ERR{code: 0x07}
-			}
-		})
-	}
+	requestStack = m
+	time.AfterFunc(tack, func() {
+		if requestStack == m {
+			// Protocol Error
+			eventStack <- &ERR{code: 0x07}
+		}
+	})
 	return
 }
 
@@ -245,6 +244,7 @@ func readHandler(buf []byte) {
 
 // Serve connects and active ASP
 func Serve(handleData func([]byte), handleUp, handleDown func()) error {
+	handler = handleData
 	return sctp.Serve(
 		readHandler,
 		func() {
@@ -286,21 +286,17 @@ func Close() error {
 	return sctp.Close()
 }
 
-func Write(b []byte) {
+func Write(cgpa, cdpa SCCPAddress, b []byte) {
 	eventStack <- &CLDT{
 		tx:  true,
 		ctx: RoutingContext,
-		cgpa: SCCPAddress{
-			NatureOfAddress: NAI_International,
-			NumberingPlan:   NPI_E164,
-			GlobalTitle:     "12345",
-			SubsystemNumber: 0x06},
-		cdpa: SCCPAddress{
-			NatureOfAddress: NAI_International,
-			NumberingPlan:   NPI_E164,
-			GlobalTitle:     "67890",
-			SubsystemNumber: 0x07},
+		// returnOnError: true,
+		cgpa: cgpa,
+		cdpa: cdpa,
 		data: b}
+}
+
+/*
 	eventStack <- &CLDR{
 		tx:    true,
 		ctx:   RoutingContext,
@@ -315,4 +311,4 @@ func Write(b []byte) {
 			NumberingPlan:   NPI_E164,
 			GlobalTitle:     "12345",
 			SubsystemNumber: 0x06}}
-}
+*/

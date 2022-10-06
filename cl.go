@@ -117,10 +117,13 @@ func (m *CLDT) handleMessageTx() {
 	// Message Data
 	buf.Write(b)
 
-	sctp.Write(buf.Bytes())
+	sctp.Write(buf.Bytes(), uint16(m.sequenceCtrl+1))
 }
 
-func (m *CLDT) handleMessageRx()         {}
+func (m *CLDT) handleMessageRx() {
+	handler(m.data)
+}
+
 func (m *CLDT) handleResult(msg message) {}
 
 func (m *CLDT) marshal() (uint8, uint8, []byte) {
@@ -225,7 +228,7 @@ func (m *CLDT) unmarshal(t, l uint16, r io.ReadSeeker) (e error) {
 }
 
 /*
-TxCLDR is Connectionless Data Response message. (Message type = 0x02)
+CLDR is Connectionless Data Response message. (Message type = 0x02)
 
 	 0                   1                   2                   3
 	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -320,7 +323,7 @@ func (m *CLDR) handleMessageTx() {
 	// Message Data
 	buf.Write(b)
 
-	sctp.Write(buf.Bytes())
+	sctp.Write(buf.Bytes(), 0)
 }
 
 func (m *CLDR) handleMessageRx()         {}

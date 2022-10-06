@@ -170,14 +170,13 @@ func Serve(handleData func([]byte), handleUp, handleDown func()) (e error) {
 	return
 }
 
-func Write(b []byte) (e error) {
+func Write(b []byte, s uint16) (e error) {
 	buf := make([]byte, len(b))
 	copy(buf, b)
 
 	info := sndrcvInfo{
 		timetolive: TTL,
-		stream:     0,
-		flags:      0,
+		stream:     s,
 		assocID:    assocID,
 		ppid:       ProtocolID}
 	if _, e = sctpSend(sock, buf, &info, 0); e != nil {
@@ -192,10 +191,8 @@ func Write(b []byte) (e error) {
 func Close() (e error) {
 	info := sndrcvInfo{
 		timetolive: TTL,
-		stream:     0,
 		flags:      sctpEoF,
-		assocID:    assocID,
-		ppid:       0}
+		assocID:    assocID}
 	if _, e = sctpSend(sock, []byte{}, &info, 0); e != nil {
 		e = &net.OpError{
 			Op: "close", Net: "sctp",
@@ -210,10 +207,8 @@ func Abort(reason string) (e error) {
 	copy(buf, []byte(reason))
 	info := sndrcvInfo{
 		timetolive: TTL,
-		stream:     0,
 		flags:      sctpAbort,
-		assocID:    assocID,
-		ppid:       0}
+		assocID:    assocID}
 	if _, e = sctpSend(sock, buf, &info, 0); e != nil {
 		e = &net.OpError{
 			Op: "abort", Net: "sctp",
